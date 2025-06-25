@@ -3,25 +3,23 @@ import json
 import numpy as np
 
 def main():
-    votacion_objetivo_id = 37230  
-    
+    # Conexion a MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/")
     db = client["quevotanEtiquetado"]
+
     votos_diputados = db["VotosDiputados"]
     parlamentarios = db["parlamentarios"]
     new_wnominate = db["new_wnominate"]
     votaciones = db["votaciones"]
 
-    # Obtener parlamentarios
+    # Obtener todos los parlamentarios
     todos_diputados = list(parlamentarios.find())
 
-    # Buscar 30 votaciones centradas en la votación objetivo
-    votaciones_lista = list(votaciones.find().sort("id", 1))  # Ordenadas por ID
-    idx_centro = next(i for i, v in enumerate(votaciones_lista) if v["id"] == votacion_objetivo_id)
-    idx_ini = max(0, idx_centro - 100)
-    idx_fin = min(len(votaciones_lista), idx_centro + 100)
-    votaciones_seleccionadas = votaciones_lista[idx_ini:idx_fin]
-    votacion_ids = [v["id"] for v in votaciones_seleccionadas]
+    # Todas las votaciones
+    votaciones_cursor = votaciones.find().sort("id", -1).limit(150)  # 150 votaciones más recientes
+    #votaciones_cursor = votaciones.find({"id": {"$lt": 37230}}).sort("id", -1).limit(30) # Limitar a las últimas 30 votaciones
+    votaciones_list = list(votaciones_cursor)
+    votacion_ids = [v["id"] for v in votaciones_list]
 
     # Inicializar estructuras
     payload = {
@@ -34,7 +32,6 @@ def main():
 
     votos_por_diputado = {}
 
-    # Construcción del payload de votos
     for vot_id in votacion_ids:
         voto_doc = votos_diputados.find_one({"id": vot_id})
         if not voto_doc:
@@ -47,48 +44,52 @@ def main():
             dip_id_str = str(diputado.get("id"))
             miembro = f"M{dip_id_str}"
 
+            # Obtener el voto si existe; si no, abstención/ausente (2)
             voto_original = detalle.get(dip_id_str, 2)
             voto_mapeado = mapear_voto(voto_original)
             votos.append((voto_mapeado, miembro))
 
+            # Agregar a memberwise
             if miembro not in votos_por_diputado:
                 votos_por_diputado[miembro] = []
             votos_por_diputado[miembro].append((voto_mapeado, f"V{vot_id}"))
 
+            # Inicializar idpt si aún no está
+            if miembro not in payload['idpt']:
+                payload['idpt'][miembro] = [0.0, 0.0]
+
+        # Agregar votación al payload
         payload['votes'].append({
             'id': f"V{vot_id}",
             'update': True,
             'votes': votos
         })
 
-        # Generar valores bp aleatorios pequeños
-        payload['bp'][f"V{vot_id}"] = np.random.uniform(-0.1, 0.1, 4).tolist()
+        # bp provisional
+        #payload['bp'][f"V{vot_id}"] = np.random.uniform(-0.1, 0.1, 4).tolist() # Generar coordenadas aleatorias del parametro bp aleatoriamente 
+        payload['bp'][f"V{vot_id}"] = [0.0, 0.0, 0.1, 0.1]  # parametro bp provisional
 
-    # Memberwise
+    # Construir memberwise
     for member_id, votos in votos_por_diputado.items():
         payload['memberwise'].append({
             'icpsr': member_id,
             'update': True,
             'votes': votos
         })
+    
+    # Construir idpt usando new_wnominate (no utilizado por el momento)
+    """diputados_cursor = new_wnominate.find({"id": {"$in": votacion_ids}})
+    for doc in diputados_cursor:
+        for dip in doc.get("diputados", []):
+            member_id = f"M{dip['ID']}"
+            if member_id not in payload['idpt']:
+                payload['idpt'][member_id] = [dip.get('coordX', 0.0), dip.get('coordY', 0.0)]"""
 
-    # Inicializar idpt 
-    for diputado in todos_diputados:
-        miembro = f"M{diputado['id']}"
-        payload['idpt'][miembro] = [0.0, 0.0]  
-
-    # Diputados de referencia
-    doc_referencia = new_wnominate.find_one({"id": votacion_objetivo_id})
-    if doc_referencia:
-        extremos = sel_extremos(doc_referencia['diputados'])
-        for dip in extremos:
-            miembro = f"M{dip['ID']}"
-            payload['idpt'][miembro] = [dip['coordX'], dip['coordY']]
-
-    with open('payload_opcion2.json', 'w') as f:
+    # Guardar el payload
+    with open('payload_conjunto.json', 'w') as f:
         json.dump(payload, f, indent=2)
 
-    print("Payload centrado en la votación", votacion_objetivo_id, "guardado en 'payload_opcion2.json'.")
+    print("✅ Payload guardado en 'payload_conjunto.json'.")
 
 def mapear_voto(valor):
     if valor == 1:
@@ -99,15 +100,6 @@ def mapear_voto(valor):
         return 0   # Abstención o Ausente
     else:
         return 0
-
-def sel_extremos(diputados):
-    izquierda = min(diputados, key=lambda x: x['coordX'])
-    derecha = max(diputados, key=lambda x: x['coordX'])
-
-    arriba = max(diputados, key=lambda x: x['coordY'])
-    abajo  = min(diputados, key=lambda x: x['coordY'])
-
-    return [izquierda, derecha, arriba, abajo]
 
 if __name__ == "__main__":
     main()

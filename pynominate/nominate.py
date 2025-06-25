@@ -21,18 +21,22 @@ METHODWB = METHOD
 OPTIONSWB = OPTIONS
 CONSTRAINTSWB = None
 
-
+# Probabilidad de votar a favor (pr_yea)
+# Calcula la probabilidad de que un legislador vote a favor de un proyecto de ley
+# dado su ideal point (x), los parámetros del proyecto de ley (bp), el peso (w) y beta (b)
+# Utiliza la función dwnominate_Uy y dwnominate_Un para calcular las utilidades
+# por votar a favor y en contra, respectivamente.
 def pr_yea(bp, x, w, b):
     pr_y = norm.cdf(dwnominate_Uy(bp, x, w, b) - dwnominate_Un(bp, x, w, b))
     return pr_y
 
-
+# Calcula la utilidad del legislador por un voto a favor (Uy)
 def dwnominate_Uy(bp, x, w, b):
     Uy = b * (np.exp(-((x[0] - bp[0] + bp[2])**2 +
                        w * w * (x[1] - bp[1] + bp[3])**2)))
     return Uy
 
-
+# Calcula la utilidad del legislador por un voto en contra (Un)
 def dwnominate_Un(bp, x, w, b):
     Un = b * (np.exp(-((x[0] - bp[0] - bp[2])**2 +
                        w * w * (x[1] - bp[1] - bp[3])**2)))
@@ -40,7 +44,7 @@ def dwnominate_Un(bp, x, w, b):
 
 
 def dwnominate_ll(bp, x, v, w, b):
-    """Generic DW-NOMINATE log likelihood"""
+    """Verosimilitud genérica de DW-NOMINATE"""
     Uy = dwnominate_Uy(bp, x, w, b)
     Un = dwnominate_Un(bp, x, w, b)
     ll = norm.logcdf(v * (Uy - Un))
@@ -56,7 +60,7 @@ def dwnominate_ll_bp(par, d, w, b):
 
 
 def dwnominate_ll_idpt(par, d, w, b):
-    """Loglik to called when updating ideal points"""
+    """Loglik se llama al actualizar puntos ideales"""
     bp = d['bp']
     v = d['votes']
     outofbounds = (par[0] * par[0] + par[1] * par[1]) > 1

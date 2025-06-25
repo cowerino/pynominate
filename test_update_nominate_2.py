@@ -1,3 +1,7 @@
+"""
+Test para la función update_nominate del módulo pynominate 
+con datos de prueba falsos para entender la estructura y funcionamiento.
+"""
 #!/usr/bin/env python
 import sys
 import numpy as np
